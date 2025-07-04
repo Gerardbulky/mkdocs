@@ -1,0 +1,9 @@
+site_name: My Docs
+theme:
+  name: readthedocs
+extra_css:
+  - css/custom.css
+nav:
+  - Home: index.md
+  - Sonarqube: sonarqube.md
+  - SSL-Cert: ssl-cert.md
