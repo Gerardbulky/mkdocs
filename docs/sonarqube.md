@@ -135,28 +135,415 @@ Configure SonarQube to send quality gate alerts and notifications directly to yo
 
 > 📝 **Example webhook URL:** `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`
 
-### 🔧 Step 2: Install SonarQube Slack Plugin
+### 🔧 Step 2: Choose Integration Method
 
-#### 2.1 Download and Install Plugin
+⚠️ **Important Note:** There is no official SonarQube Slack plugin from SonarSource. We recommend using the built-in webhooks feature for the most reliable integration.
 
+#### 2.1 Method 1: Built-in Webhooks (Recommended)
+
+This is the official and most reliable method for SonarQube → Slack integration using SonarQube's native webhook feature with a custom handler:
+
+✅ **Advantages:**
+- Officially supported by SonarSource
+- Works with all modern SonarQube versions
+- No plugin maintenance required
+- More reliable and secure
+- Full control over message formatting
+- Can add custom logic and filtering
+
+**Choose one of these webhook approaches:**
+
+**Option A: External Slack Handler Service**
+- Deploy a lightweight web service (Node.js, Python Flask, etc.)
+- Receives SonarQube webhooks and transforms them for Slack
+- Can run on the same server or separate service
+- Best for teams with multiple projects
+
+**Option B: Simple Python Script**
+- Lightweight Python script that processes webhooks
+- Can run as a systemd service or via cron
+- Perfect for single-server setups
+- Minimal resource usage
+
+**Continue to Step 3** for webhook implementation details.
+
+
+### 🔧 Step 3: Webhook Implementation Options
+
+#### 3.1 Option A: Python Flask Webhook Handler (Recommended)
+
+Create a lightweight Python service to handle SonarQube webhooks:
+
+**Install Dependencies:**
 ```bash
-# Download the Slack plugin
-wget https://github.com/sonarqube-plugins/sonar-slack-notifier-plugin/releases/latest/download/sonar-slack-notifier-plugin.jar
+# Install Python dependencies
+pip install flask requests
 
-# Move to SonarQube plugins directory
-sudo mv sonar-slack-notifier-plugin.jar /opt/sonarqube/extensions/plugins/
+# Or create a requirements.txt file
+cat > requirements.txt << EOF
+flask==2.3.3
+requests==2.31.0
+EOF
 
-# Restart SonarQube
-sudo systemctl restart sonarqube
+pip install -r requirements.txt
 ```
 
-#### 2.2 Alternative: Manual Plugin Installation
+**Create the Webhook Handler:**
+```bash
+# Create the webhook handler script
+sudo nano /opt/sonarqube-slack-handler/webhook_handler.py
+```
 
-1. 🔗 **Download from:** [SonarQube Slack Plugin](https://github.com/sonarqube-plugins/sonar-slack-notifier-plugin)
-2. 📁 **Copy JAR file** to `/opt/sonarqube/extensions/plugins/`
-3. 🔄 **Restart SonarQube service**
+**Python Webhook Handler Script:**
+```python
+#!/usr/bin/env python3
+"""
+SonarQube to Slack Webhook Handler
+Receives SonarQube webhooks and forwards formatted messages to Slack
+"""
 
-### 🔧 Step 3: Configure Slack in SonarQube
+import json
+import requests
+from flask import Flask, request, jsonify
+import logging
+from datetime import datetime
+
+app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configuration
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+SONARQUBE_BASE_URL = "https://sonarqube.yourdomain.com"
+
+def get_color_for_status(status):
+    """Return Slack color based on quality gate status"""
+    colors = {
+        'OK': 'good',
+        'PASSED': 'good',
+        'ERROR': 'danger',
+        'FAILED': 'danger',
+        'WARN': 'warning',
+        'WARNING': 'warning'
+    }
+    return colors.get(status.upper(), 'good')
+
+def format_slack_message(webhook_data):
+    """Transform SonarQube webhook data into Slack message format"""
+    
+    # Extract data from SonarQube webhook
+    project = webhook_data.get('project', {})
+    quality_gate = webhook_data.get('qualityGate', {})
+    analysis_date = webhook_data.get('analysedAt', '')
+    branch = webhook_data.get('branch', {})
+    
+    project_key = project.get('key', 'unknown')
+    project_name = project.get('name', 'Unknown Project')
+    qg_status = quality_gate.get('status', 'UNKNOWN')
+    branch_name = branch.get('name', 'main')
+    
+    # Format analysis date
+    if analysis_date:
+        try:
+            dt = datetime.fromisoformat(analysis_date.replace('Z', '+00:00'))
+            formatted_date = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        except:
+            formatted_date = analysis_date
+    else:
+        formatted_date = 'N/A'
+    
+    # Build dashboard URL
+    dashboard_url = f"{SONARQUBE_BASE_URL}/dashboard?id={project_key}"
+    issues_url = f"{SONARQUBE_BASE_URL}/project/issues?id={project_key}&resolved=false"
+    measures_url = f"{SONARQUBE_BASE_URL}/component_measures?id={project_key}"
+    
+    # Create Slack message
+    color = get_color_for_status(qg_status)
+    
+    # Status emoji
+    status_emoji = "✅" if qg_status in ['OK', 'PASSED'] else "❌"
+    
+    message = {
+        "channel": "#code-quality",
+        "username": "SonarQube",
+        "icon_emoji": ":sonarqube:",
+        "attachments": [
+            {
+                "color": color,
+                "title": f"{status_emoji} Quality Gate: {qg_status}",
+                "title_link": dashboard_url,
+                "text": f"Analysis completed for project *{project_name}*",
+                "fields": [
+                    {
+                        "title": "Project",
+                        "value": f"<{dashboard_url}|{project_name}>",
+                        "short": True
+                    },
+                    {
+                        "title": "Branch",
+                        "value": branch_name,
+                        "short": True
+                    },
+                    {
+                        "title": "Status",
+                        "value": qg_status,
+                        "short": True
+                    },
+                    {
+                        "title": "Analyzed",
+                        "value": formatted_date,
+                        "short": True
+                    }
+                ],
+                "actions": [
+                    {
+                        "type": "button",
+                        "text": "📊 View Dashboard",
+                        "url": dashboard_url
+                    },
+                    {
+                        "type": "button",
+                        "text": "🐛 View Issues",
+                        "url": issues_url
+                    },
+                    {
+                        "type": "button",
+                        "text": "📈 View Measures",
+                        "url": measures_url
+                    }
+                ],
+                "footer": "SonarQube Quality Gate",
+                "ts": int(datetime.now().timestamp())
+            }
+        ]
+    }
+    
+    return message
+
+@app.route('/webhook', methods=['POST'])
+def handle_webhook():
+    """Handle incoming SonarQube webhook"""
+    try:
+        # Get webhook data
+        webhook_data = request.get_json()
+        
+        if not webhook_data:
+            logger.error("No JSON data received")
+            return jsonify({"error": "No data received"}), 400
+        
+        logger.info(f"Received webhook: {json.dumps(webhook_data, indent=2)}")
+        
+        # Format message for Slack
+        slack_message = format_slack_message(webhook_data)
+        
+        # Send to Slack
+        response = requests.post(
+            SLACK_WEBHOOK_URL,
+            json=slack_message,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            logger.info("Successfully sent message to Slack")
+            return jsonify({"status": "success"}), 200
+        else:
+            logger.error(f"Failed to send to Slack: {response.status_code} - {response.text}")
+            return jsonify({"error": "Failed to send to Slack"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+if __name__ == '__main__':
+    # Update the webhook URL before running
+    if "YOUR/WEBHOOK/URL" in SLACK_WEBHOOK_URL:
+        print("⚠️  Please update SLACK_WEBHOOK_URL in the script before running!")
+        exit(1)
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=5000, debug=False)
+```
+
+**Create Systemd Service:**
+```bash
+# Create systemd service file
+sudo nano /etc/systemd/system/sonarqube-slack-handler.service
+```
+
+```ini
+[Unit]
+Description=SonarQube Slack Webhook Handler
+After=network.target
+
+[Service]
+Type=simple
+User=sonarqube
+Group=sonarqube
+WorkingDirectory=/opt/sonarqube-slack-handler
+ExecStart=/usr/bin/python3 /opt/sonarqube-slack-handler/webhook_handler.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Start the Service:**
+```bash
+# Create directory and set permissions
+sudo mkdir -p /opt/sonarqube-slack-handler
+sudo chown sonarqube:sonarqube /opt/sonarqube-slack-handler
+
+# Copy the script (update the SLACK_WEBHOOK_URL first!)
+sudo cp webhook_handler.py /opt/sonarqube-slack-handler/
+
+# Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable sonarqube-slack-handler
+sudo systemctl start sonarqube-slack-handler
+
+# Check status
+sudo systemctl status sonarqube-slack-handler
+```
+
+#### 3.2 Option B: Simple Python Script Handler
+
+For a simpler approach, use this lightweight script:
+
+```python
+#!/usr/bin/env python3
+"""
+Simple SonarQube to Slack Webhook Handler
+Minimal script for basic Slack notifications
+"""
+
+import json
+import requests
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import logging
+
+# Configuration
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+SONARQUBE_URL = "https://sonarqube.yourdomain.com"
+PORT = 5000
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class WebhookHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path == '/webhook':
+            try:
+                # Read webhook data
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                webhook_data = json.loads(post_data.decode('utf-8'))
+                
+                # Extract basic info
+                project = webhook_data.get('project', {})
+                quality_gate = webhook_data.get('qualityGate', {})
+                
+                project_name = project.get('name', 'Unknown')
+                project_key = project.get('key', 'unknown')
+                status = quality_gate.get('status', 'UNKNOWN')
+                
+                # Create simple Slack message
+                color = 'good' if status in ['OK', 'PASSED'] else 'danger'
+                emoji = '✅' if status in ['OK', 'PASSED'] else '❌'
+                
+                slack_message = {
+                    "text": f"{emoji} SonarQube Quality Gate: *{status}*",
+                    "attachments": [
+                        {
+                            "color": color,
+                            "title": f"Project: {project_name}",
+                            "title_link": f"{SONARQUBE_URL}/dashboard?id={project_key}",
+                            "text": f"Quality gate status: *{status}*",
+                            "actions": [
+                                {
+                                    "type": "button",
+                                    "text": "View Dashboard",
+                                    "url": f"{SONARQUBE_URL}/dashboard?id={project_key}"
+                                }
+                            ]
+                        }
+                    ]
+                }
+                
+                # Send to Slack
+                response = requests.post(SLACK_WEBHOOK_URL, json=slack_message)
+                
+                if response.status_code == 200:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'OK')
+                    logger.info(f"Sent notification for {project_name}: {status}")
+                else:
+                    self.send_response(500)
+                    self.end_headers()
+                    logger.error(f"Failed to send to Slack: {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"Error: {e}")
+                self.send_response(500)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+if __name__ == '__main__':
+    if "YOUR/WEBHOOK/URL" in SLACK_WEBHOOK_URL:
+        print("Please update SLACK_WEBHOOK_URL before running!")
+        sys.exit(1)
+    
+    server = HTTPServer(('0.0.0.0', PORT), WebhookHandler)
+    logger.info(f"Starting webhook handler on port {PORT}")
+    server.serve_forever()
+```
+
+#### 3.3 Configure SonarQube Webhooks
+
+Now configure SonarQube to send webhooks to your handler:
+
+1. 🔗 **Login to SonarQube:** `https://sonarqube.yourdomain.com`
+2. 🔧 **Navigate to:** Administration → Configuration → Webhooks
+3. ➕ **Add Webhook:**
+
+| 🎯 Field | 📋 Value |
+|----------|----------|
+| **Name** | `Slack Notifications` |
+| **URL** | `http://localhost:5000/webhook` (or your server IP) |
+| **Secret** | *(optional)* |
+
+#### 3.4 Test the Integration
+
+```bash
+# Test the webhook handler
+curl -X POST http://localhost:5000/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": {
+      "key": "test-project",
+      "name": "Test Project"
+    },
+    "qualityGate": {
+      "status": "PASSED"
+    }
+  }'
+
+# Check handler logs
+sudo journalctl -u sonarqube-slack-handler -f
+```
+
+### 🔧 Step 4: Configure Slack in SonarQube (Plugin Method)
 
 #### 3.1 Access SonarQube Administration
 
