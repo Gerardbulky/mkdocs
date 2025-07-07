@@ -176,6 +176,18 @@ Create a lightweight Python service to handle SonarQube webhooks:
 
 **Install Dependencies:**
 ```bash
+# Check if Python is installed
+python3 --version
+pip --version
+
+# If not install using:
+sudo apt update
+sudo apt install python3 python3-pip -y
+
+# Set Python to point to Python3
+sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+```
+```bash
 # Install Python dependencies
 pip install flask requests
 
@@ -185,6 +197,9 @@ flask==2.3.3
 requests==2.31.0
 EOF
 
+# 1. Create a virtual environment
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -195,6 +210,8 @@ sudo nano /opt/sonarqube-slack-handler/webhook_handler.py
 ```
 
 **Python Webhook Handler Script:**
+
+The current setup with the Python Flask webhook handler is actually more robust and flexible than the plugin-based approach.
 ```python
 #!/usr/bin/env python3
 """
@@ -363,7 +380,7 @@ def health_check():
 
 if __name__ == '__main__':
     # Update the webhook URL before running
-    if "YOUR/WEBHOOK/URL" in SLACK_WEBHOOK_URL:
+    if "YOUR/WEBHOOK/URL from GitHub developer settings" in SLACK_WEBHOOK_URL:
         print("⚠️  Please update SLACK_WEBHOOK_URL in the script before running!")
         exit(1)
     
@@ -384,10 +401,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=sonarqube
-Group=sonarqube
+User=ubuntu   #Change user to your server user
+#Group=sonarqube
 WorkingDirectory=/opt/sonarqube-slack-handler
-ExecStart=/usr/bin/python3 /opt/sonarqube-slack-handler/webhook_handler.py
+ExecStart=/home/ubuntu/venv/bin/python3 /opt/sonarqube-slack-handler/webhook_handler.py #running 'which python3' will show the python path. /home/ubuntu/venv/bin/python3 
 Restart=always
 RestartSec=10
 
@@ -398,11 +415,7 @@ WantedBy=multi-user.target
 **Start the Service:**
 ```bash
 # Create directory and set permissions
-sudo mkdir -p /opt/sonarqube-slack-handler
-sudo chown sonarqube:sonarqube /opt/sonarqube-slack-handler
-
-# Copy the script (update the SLACK_WEBHOOK_URL first!)
-sudo cp webhook_handler.py /opt/sonarqube-slack-handler/
+sudo chown ubuntu:ubuntu /opt/sonarqube-slack-handler # Ubuntu user can run the script in the directory
 
 # Enable and start the service
 sudo systemctl daemon-reload
@@ -413,101 +426,7 @@ sudo systemctl start sonarqube-slack-handler
 sudo systemctl status sonarqube-slack-handler
 ```
 
-#### 3.2 Option B: Simple Python Script Handler
 
-For a simpler approach, use this lightweight script:
-
-```python
-#!/usr/bin/env python3
-"""
-Simple SonarQube to Slack Webhook Handler
-Minimal script for basic Slack notifications
-"""
-
-import json
-import requests
-import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import logging
-
-# Configuration
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-SONARQUBE_URL = "https://sonarqube.yourdomain.com"
-PORT = 5000
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-class WebhookHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        if self.path == '/webhook':
-            try:
-                # Read webhook data
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                webhook_data = json.loads(post_data.decode('utf-8'))
-                
-                # Extract basic info
-                project = webhook_data.get('project', {})
-                quality_gate = webhook_data.get('qualityGate', {})
-                
-                project_name = project.get('name', 'Unknown')
-                project_key = project.get('key', 'unknown')
-                status = quality_gate.get('status', 'UNKNOWN')
-                
-                # Create simple Slack message
-                color = 'good' if status in ['OK', 'PASSED'] else 'danger'
-                emoji = '✅' if status in ['OK', 'PASSED'] else '❌'
-                
-                slack_message = {
-                    "text": f"{emoji} SonarQube Quality Gate: *{status}*",
-                    "attachments": [
-                        {
-                            "color": color,
-                            "title": f"Project: {project_name}",
-                            "title_link": f"{SONARQUBE_URL}/dashboard?id={project_key}",
-                            "text": f"Quality gate status: *{status}*",
-                            "actions": [
-                                {
-                                    "type": "button",
-                                    "text": "View Dashboard",
-                                    "url": f"{SONARQUBE_URL}/dashboard?id={project_key}"
-                                }
-                            ]
-                        }
-                    ]
-                }
-                
-                # Send to Slack
-                response = requests.post(SLACK_WEBHOOK_URL, json=slack_message)
-                
-                if response.status_code == 200:
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b'OK')
-                    logger.info(f"Sent notification for {project_name}: {status}")
-                else:
-                    self.send_response(500)
-                    self.end_headers()
-                    logger.error(f"Failed to send to Slack: {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                self.send_response(500)
-                self.end_headers()
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-if __name__ == '__main__':
-    if "YOUR/WEBHOOK/URL" in SLACK_WEBHOOK_URL:
-        print("Please update SLACK_WEBHOOK_URL before running!")
-        sys.exit(1)
-    
-    server = HTTPServer(('0.0.0.0', PORT), WebhookHandler)
-    logger.info(f"Starting webhook handler on port {PORT}")
-    server.serve_forever()
-```
 
 #### 3.3 Configure SonarQube Webhooks
 
@@ -543,225 +462,74 @@ curl -X POST http://localhost:5000/webhook \
 sudo journalctl -u sonarqube-slack-handler -f
 ```
 
-### 🔧 Step 4: Configure Slack in SonarQube (Plugin Method)
 
-#### 3.1 Access SonarQube Administration
 
-1. 🔗 **Login to SonarQube:** `https://sonarqube.yourdomain.com`
-2. 🔧 **Navigate to:** Administration → Configuration → Slack
-
-#### 3.2 Global Slack Configuration
-
-| 🎯 Setting | 📋 Value |
-|-----------|----------|
-| **Webhook URL** | `https://hooks.slack.com/services/YOUR/WEBHOOK/URL` |
-| **Channel** | `#code-quality` (or your preferred channel) |
-| **Username** | `SonarQube` |
-| **Icon** | `:warning:` or custom emoji |
-
-### 🔧 Step 4: Configure Project-Level Notifications
-
-#### 4.1 Per-Project Slack Settings
-
-For each project that should send Slack notifications:
-
-1. 🔗 **Navigate to:** Project → Project Settings → Slack
-2. 📝 **Configure the following:**
-
-| 🎯 Setting | 📋 Value | 📝 Description |
-|-----------|----------|----------------|
-| **Enabled** | ✅ | Enable Slack notifications |
-| **Channel** | `#project-alerts` | Project-specific channel |
-| **Quality Gate** | ✅ | Send quality gate status |
-| **New Issues** | ✅ | Alert on new issues |
-| **Include Branch** | ✅ | Show branch information |
-| **SonarQube URL** | `https://sonarqube.yourdomain.com` | Base URL for links |
-
-### 🔧 Step 5: Advanced Webhook Configuration
-
-#### 5.1 Custom Webhook Script
-
-Create a custom webhook script for enhanced notifications:
-
-```bash
-# Create custom webhook script
-sudo nano /opt/sonarqube/bin/slack-webhook.sh
-```
-
-Add this enhanced webhook script:
-
-```bash
-#!/bin/bash
-
-# Enhanced SonarQube Slack Webhook
-# Usage: slack-webhook.sh <webhook_url> <channel> <message> <project_key> <project_name>
-
-WEBHOOK_URL="$1"
-CHANNEL="$2"
-MESSAGE="$3"
-PROJECT_KEY="$4"
-PROJECT_NAME="$5"
-SONARQUBE_URL="https://sonarqube.yourdomain.com"
-
-# Quality Gate Status Colors
-case "$MESSAGE" in
-    *"PASSED"*) COLOR="good" ;;
-    *"FAILED"*) COLOR="danger" ;;
-    *"WARNING"*) COLOR="warning" ;;
-    *) COLOR="good" ;;
-esac
-
-# Extract quality gate status
-if [[ "$MESSAGE" =~ "Quality Gate: "([A-Z]+) ]]; then
-    QG_STATUS="${BASH_REMATCH[1]}"
-else
-    QG_STATUS="UNKNOWN"
-fi
-
-# Create rich Slack message
-SLACK_PAYLOAD=$(cat <<EOF
-{
-    "channel": "$CHANNEL",
-    "username": "SonarQube",
-    "icon_emoji": ":sonarqube:",
-    "attachments": [
-        {
-            "color": "$COLOR",
-            "title": "🔍 SonarQube Quality Gate: $QG_STATUS",
-            "title_link": "$SONARQUBE_URL/dashboard?id=$PROJECT_KEY",
-            "text": "$MESSAGE",
-            "fields": [
-                {
-                    "title": "Project",
-                    "value": "$PROJECT_NAME",
-                    "short": true
-                },
-                {
-                    "title": "Status",
-                    "value": "$QG_STATUS",
-                    "short": true
-                }
-            ],
-            "actions": [
-                {
-                    "type": "button",
-                    "text": "📊 View Dashboard",
-                    "url": "$SONARQUBE_URL/dashboard?id=$PROJECT_KEY"
-                },
-                {
-                    "type": "button",
-                    "text": "🐛 View Issues",
-                    "url": "$SONARQUBE_URL/project/issues?id=$PROJECT_KEY"
-                },
-                {
-                    "type": "button",
-                    "text": "📈 View Measures",
-                    "url": "$SONARQUBE_URL/component_measures?id=$PROJECT_KEY"
-                }
-            ],
-            "footer": "SonarQube Quality Gate",
-            "ts": $(date +%s)
-        }
-    ]
-}
-EOF
-)
-
-# Send to Slack
-curl -X POST -H 'Content-type: application/json' \
-    --data "$SLACK_PAYLOAD" \
-    "$WEBHOOK_URL"
-```
-
-Make the script executable:
-
-```bash
-sudo chmod +x /opt/sonarqube/bin/slack-webhook.sh
-```
-
-### 🔧 Step 6: Configure Quality Gates with Slack
-
-#### 6.1 Quality Gate Webhook Configuration
-
-1. 🔗 **Navigate to:** Quality Gates → Your Quality Gate → Webhooks
-2. ➕ **Add Webhook** with these details:
-
-| 🎯 Field | 📋 Value |
-|----------|----------|
-| **Name** | `Slack Notifications` |
-| **URL** | `https://hooks.slack.com/services/YOUR/WEBHOOK/URL` |
-| **Secret** | *(optional)* |
-
-#### 6.2 Webhook Payload Template
-
-Configure a custom payload template for rich Slack messages:
-
-```json
-{
-    "channel": "#code-quality",
-    "username": "SonarQube",
-    "icon_emoji": ":sonarqube:",
-    "attachments": [
-        {
-            "color": "{{#eq status.qualityGateStatus 'PASSED'}}good{{/eq}}{{#eq status.qualityGateStatus 'FAILED'}}danger{{/eq}}{{#eq status.qualityGateStatus 'WARNING'}}warning{{/eq}}",
-            "title": "🔍 Quality Gate: {{status.qualityGateStatus}}",
-            "title_link": "{{serverUrl}}/dashboard?id={{project.key}}",
-            "text": "Project: *{{project.name}}*\nBranch: {{branch.name}}\nStatus: *{{status.qualityGateStatus}}*",
-            "fields": [
-                {
-                    "title": "📊 Coverage",
-                    "value": "{{measures.coverage}}%",
-                    "short": true
-                },
-                {
-                    "title": "🐛 Issues",
-                    "value": "{{measures.violations}}",
-                    "short": true
-                },
-                {
-                    "title": "🔒 Security",
-                    "value": "{{measures.security_rating}}",
-                    "short": true
-                },
-                {
-                    "title": "🧹 Maintainability",
-                    "value": "{{measures.maintainability_rating}}",
-                    "short": true
-                }
-            ],
-            "actions": [
-                {
-                    "type": "button",
-                    "text": "📊 View Dashboard",
-                    "url": "{{serverUrl}}/dashboard?id={{project.key}}"
-                },
-                {
-                    "type": "button",
-                    "text": "🐛 View Issues",
-                    "url": "{{serverUrl}}/project/issues?id={{project.key}}"
-                }
-            ],
-            "footer": "SonarQube Analysis",
-            "ts": {{analysisDate}}
-        }
-    ]
-}
-```
 
 ### 🔧 Step 7: Configure Branch-Specific Notifications
 
-#### 7.1 Branch Pattern Configuration
+⚠️ **Important Note:** Branch and Pull Request analysis is only available in **SonarQube Developer Edition and higher**. If you're using Community Edition, you can still implement branch-specific routing in your Python webhook handler.
 
-Set up notifications for specific branches:
+#### 7.1 SonarQube Edition Differences
 
-```bash
-# Configure branch-specific Slack channels
-# Main branch -> #releases
-# Feature branches -> #dev-alerts
-# Pull requests -> #pr-reviews
+| Feature | Community Edition | Developer Edition+ |
+|---------|------------------|-------------------|
+| **Branch Analysis** | ❌ Main branch only | ✅ All branches |
+| **Pull Request Analysis** | ❌ Not available | ✅ Full PR analysis |
+| **Branch Configuration UI** | ❌ Not available | ✅ Available under Administration |
+| **Webhook Branch Data** | ❌ Limited | ✅ Full branch information |
+
+#### 7.2 Community Edition: Python Handler Branch Routing
+
+Since the webhook data in Community Edition is limited, implement branch detection in your Python handler:
+
+```python
+def get_branch_from_project_key(project_key):
+    """Extract branch info from project key or other sources"""
+    
+    # Option 1: If you include branch in project key
+    if '-feature-' in project_key:
+        return 'feature'
+    elif '-hotfix-' in project_key:
+        return 'hotfix'
+    elif project_key.endswith('-dev'):
+        return 'develop'
+    else:
+        return 'main'
+
+def get_slack_channel_community_edition(project_key, project_name):
+    """Route notifications based on project naming or other indicators"""
+    
+    branch_type = get_branch_from_project_key(project_key)
+    
+    # Channel routing for Community Edition
+    if branch_type == 'main':
+        return '#releases'
+    elif branch_type in ['feature', 'develop']:
+        return '#dev-alerts'
+    elif branch_type == 'hotfix':
+        return '#urgent-fixes'
+    else:
+        return '#code-quality'
+
+# Update your webhook handler:
+def format_slack_message(webhook_data):
+    project = webhook_data.get('project', {})
+    project_key = project.get('key', 'unknown')
+    project_name = project.get('name', 'Unknown Project')
+    
+    # Use Community Edition branch detection
+    channel = get_slack_channel_community_edition(project_key, project_name)
+    
+    message = {
+        "channel": channel,
+        # ... rest of your message
+    }
+    return message
 ```
 
-#### 7.2 SonarQube Branch Configuration
+#### 7.3 Developer Edition+: Native Branch Configuration
+
+If you upgrade to Developer Edition or higher, you'll have access to:
 
 1. 🔗 **Navigate to:** Administration → Configuration → Branches and Pull Requests
 2. 📝 **Configure branch patterns:**
@@ -772,6 +540,22 @@ Set up notifications for specific branches:
 | `develop` | `#dev-alerts` | Quality gate failures |
 | `feature/*` | `#dev-alerts` | Major issues only |
 | `PR-*` | `#pr-reviews` | Quality gate status |
+
+#### 7.4 Practical Implementation for Community Edition
+
+Since you're using Community Edition, here are your best options:
+
+**Option 1: Project-Based Routing**
+Create separate SonarQube projects for different branches:
+- `my-app-main` → Routes to `#releases`
+- `my-app-develop` → Routes to `#dev-alerts`
+- `my-app-feature-xyz` → Routes to `#dev-alerts`
+
+**Option 2: Single Channel (Recommended)**
+Keep it simple and use one channel (`#code-quality`) for all notifications. This works perfectly for most teams.
+
+**Option 3: Enhanced Python Handler**
+Add the branch detection code above to your existing `webhook_handler.py` file.
 
 ### 🔧 Step 8: Test Slack Integration
 
