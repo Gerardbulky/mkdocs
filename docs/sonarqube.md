@@ -247,20 +247,121 @@ def get_color_for_status(status):
     }
     return colors.get(status.upper(), 'good')
 
+def detect_actual_branch(webhook_data):
+    """
+    Enhanced branch detection for Community Edition
+    Tries multiple methods to get the actual branch name
+    """
+    
+    # Method 1: Try webhook branch data first
+    branch = webhook_data.get('branch', {})
+    branch_name = branch.get('name', '')
+    
+    if branch_name and branch_name.lower() not in ['main', 'master', '']:
+        return branch_name
+    
+    # Method 2: Check project key for branch indicators
+    project = webhook_data.get('project', {})
+    project_key = project.get('key', '')
+    
+    # Look for branch patterns in project key
+    if '-dev' in project_key.lower():
+        return 'dev'
+    elif '-develop' in project_key.lower():
+        return 'develop'
+    elif 'feature' in project_key.lower():
+        # Extract feature branch name
+        parts = project_key.lower().split('-')
+        for i, part in enumerate(parts):
+            if 'feature' in part and i + 1 < len(parts):
+                return f"feature/{parts[i + 1]}"
+        return 'feature'
+    elif 'hotfix' in project_key.lower():
+        return 'hotfix'
+    
+    # Method 3: Check for environment indicators
+    if any(word in project_key.lower() for word in ['staging', 'test', 'qa']):
+        return 'staging/qa'
+    
+    # Method 4: Check revision/commit info if available
+    revision = webhook_data.get('revision', '')
+    if revision:
+        # You could potentially map commits to branches here if needed
+        pass
+    
+    # Fallback: Return what SonarQube provided or 'main'
+    return branch_name if branch_name else 'main'
+
+def handle_quality_gate_status(qg_status):
+    """
+    Handle Unknown quality gate status and provide better messaging
+    """
+    
+    if qg_status.upper() in ['UNKNOWN', 'NONE', '']:
+        return {
+            'status': 'PENDING',
+            'emoji': '⏳',
+            'color': 'warning',
+            'message': 'Quality gate evaluation pending or not configured'
+        }
+    elif qg_status.upper() in ['OK', 'PASSED']:
+        return {
+            'status': qg_status,
+            'emoji': '✅',
+            'color': 'good',
+            'message': 'Quality gate passed successfully'
+        }
+    elif qg_status.upper() in ['ERROR', 'FAILED']:
+        return {
+            'status': qg_status,
+            'emoji': '❌',
+            'color': 'danger',
+            'message': 'Quality gate failed - action required'
+        }
+    elif qg_status.upper() in ['WARN', 'WARNING']:
+        return {
+            'status': qg_status,
+            'emoji': '⚠️',
+            'color': 'warning',
+            'message': 'Quality gate warning - review recommended'
+        }
+    else:
+        return {
+            'status': qg_status,
+            'emoji': '❓',
+            'color': 'warning',
+            'message': f'Quality gate status: {qg_status}'
+        }
+
 def format_slack_message(webhook_data):
     """Transform SonarQube webhook data into Slack message format"""
-    
+
     # Extract data from SonarQube webhook
     project = webhook_data.get('project', {})
     quality_gate = webhook_data.get('qualityGate', {})
     analysis_date = webhook_data.get('analysedAt', '')
-    branch = webhook_data.get('branch', {})
-    
+
     project_key = project.get('key', 'unknown')
     project_name = project.get('name', 'Unknown Project')
+
+    # Get both webhook status and quality gate status
+    webhook_status = webhook_data.get('status', '')
     qg_status = quality_gate.get('status', 'UNKNOWN')
-    branch_name = branch.get('name', 'main')
-    
+
+    # Use webhook status if quality gate is unknown/missing
+    if qg_status.upper() in ['UNKNOWN', 'NONE', ''] and webhook_status:
+        qg_status = webhook_status
+        logger.info(f"Using webhook status '{webhook_status}' since quality gate status is '{quality_gate.get('status', 'missing')}'")
+
+    # Get SonarQube branch (always 'main' in Community Edition)
+    sonar_branch = webhook_data.get('branch', {}).get('name', 'main')
+
+    # Enhanced branch detection for actual Git branch
+    actual_git_branch = detect_actual_branch(webhook_data)
+
+    # Enhanced quality gate handling
+    qg_info = handle_quality_gate_status(qg_status)
+
     # Format analysis date
     if analysis_date:
         try:
@@ -270,28 +371,25 @@ def format_slack_message(webhook_data):
             formatted_date = analysis_date
     else:
         formatted_date = 'N/A'
-    
+
     # Build dashboard URL
     dashboard_url = f"{SONARQUBE_BASE_URL}/dashboard?id={project_key}"
     issues_url = f"{SONARQUBE_BASE_URL}/project/issues?id={project_key}&resolved=false"
     measures_url = f"{SONARQUBE_BASE_URL}/component_measures?id={project_key}"
-    
-    # Create Slack message
-    color = get_color_for_status(qg_status)
-    
-    # Status emoji
-    status_emoji = "✅" if qg_status in ['OK', 'PASSED'] else "❌"
-    
+
+    # Log the actual data for debugging
+    logger.info(f"Branch Detection - Project: {project_name}, Key: {project_key}, SonarQube Branch: {sonar_branch}, Git Branch: {actual_git_branch}, QG Status: {qg_status}")
+
     message = {
-        "channel": "#code-quality",
+        "channel": "#all-sonarqube-notification",
         "username": "SonarQube",
         "icon_emoji": ":sonarqube:",
         "attachments": [
             {
-                "color": color,
-                "title": f"{status_emoji} Quality Gate: {qg_status}",
+                "color": qg_info['color'],
+                "title": f"{qg_info['emoji']} Quality Gate: {qg_info['status']}",
                 "title_link": dashboard_url,
-                "text": f"Analysis completed for project *{project_name}*",
+                "text": f"Analysis completed for project *{project_name}*\n💡 {qg_info['message']}",
                 "fields": [
                     {
                         "title": "Project",
@@ -299,18 +397,28 @@ def format_slack_message(webhook_data):
                         "short": True
                     },
                     {
-                        "title": "Branch",
-                        "value": branch_name,
+                        "title": "SonarQube Branch",
+                        "value": f"🔍 {sonar_branch}",
+                        "short": True
+                    },
+                    {
+                        "title": "Git Branch",
+                        "value": f"🌿 {actual_git_branch}",
                         "short": True
                     },
                     {
                         "title": "Status",
-                        "value": qg_status,
+                        "value": f"{qg_info['emoji']} {qg_info['status']}",
                         "short": True
                     },
                     {
                         "title": "Analyzed",
                         "value": formatted_date,
+                        "short": True
+                    },
+                    {
+                        "title": "Revision",
+                        "value": webhook_data.get('revision', 'N/A')[:8] if webhook_data.get('revision') else 'N/A',
                         "short": True
                     }
                 ],
@@ -331,12 +439,12 @@ def format_slack_message(webhook_data):
                         "url": measures_url
                     }
                 ],
-                "footer": "SonarQube Quality Gate",
+                "footer": "SonarQube Quality Gate Analysis",
                 "ts": int(datetime.now().timestamp())
             }
         ]
     }
-    
+
     return message
 
 @app.route('/webhook', methods=['POST'])

@@ -7,3 +7,4 @@ nav:
   - Home: index.md
   - Sonarqube: sonarqube.md
   - SSL-Cert: ssl-cert.md
+  - Ksops: configure-ksops-plugin-in-argocd-reposerver.md

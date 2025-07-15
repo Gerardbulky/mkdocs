@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>SSL-Cert - My Docs</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../css/custom.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "SSL-Cert";
+        var mkdocs_page_input_path = "ssl-cert.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> My Docs
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../sonarqube/">Sonarqube Configuration</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">SSL-Cert</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#types-of-ssl-certificates">Types of SSL Certificates</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#domain-validated-dv">Domain Validated (DV)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#organization-validated-ov">Organization Validated (OV)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#extended-validation-ev">Extended Validation (EV)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#certificate-management">Certificate Management</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#obtaining-certificates">Obtaining Certificates</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#installation">Installation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#renewal">Renewal</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#best-practices">Best Practices</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">My Docs</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">SSL-Cert</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="ssl-certificate-management">SSL Certificate Management</h1>
+<h2 id="overview">Overview</h2>
+<p>SSL certificates are digital certificates that authenticate the identity of a website and enable encrypted connections.</p>
+<h2 id="types-of-ssl-certificates">Types of SSL Certificates</h2>
+<h3 id="domain-validated-dv">Domain Validated (DV)</h3>
+<ul>
+<li>Basic level of validation</li>
+<li>Fastest to obtain</li>
+<li>Suitable for blogs and informational sites</li>
+</ul>
+<h3 id="organization-validated-ov">Organization Validated (OV)</h3>
+<ul>
+<li>Moderate level of validation</li>
+<li>Verifies organization details</li>
+<li>Good for business websites</li>
+</ul>
+<h3 id="extended-validation-ev">Extended Validation (EV)</h3>
+<ul>
+<li>Highest level of validation</li>
+<li>Extensive verification process</li>
+<li>Displays organization name in browser</li>
+</ul>
+<h2 id="certificate-management">Certificate Management</h2>
+<h3 id="obtaining-certificates">Obtaining Certificates</h3>
+<ol>
+<li><strong>Free Certificates</strong></li>
+<li>Let's Encrypt</li>
+<li>
+<p>Cloudflare SSL</p>
+</li>
+<li>
+<p><strong>Commercial Certificates</strong></p>
+</li>
+<li>DigiCert</li>
+<li>GlobalSign</li>
+<li>Comodo</li>
+</ol>
+<h3 id="installation">Installation</h3>
+<p>Steps to install SSL certificates on your server.</p>
+<h3 id="renewal">Renewal</h3>
+<p>Set up automatic renewal processes to avoid certificate expiration.</p>
+<h2 id="best-practices">Best Practices</h2>
+<ul>
+<li>Use strong encryption (TLS 1.3)</li>
+<li>Implement HSTS headers</li>
+<li>Monitor certificate expiration</li>
+<li>Use Certificate Transparency logs</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../sonarqube/" class="btn btn-neutral float-left" title="Sonarqube Configuration"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../sonarqube/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
